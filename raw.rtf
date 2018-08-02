@@ -1,0 +1,284 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1561\cocoasubrtf200
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww10800\viewh8400\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 #include <FastLED.h>\
+\
+\
+#define N_PIXELS 150\
+#define LED_PIN 6\
+#define ANALOG_READ 0\
+\
+#define MIC_LOW 0.0\
+#define MIC_HIGH 737.0\
+\
+#define AVGLEN 5\
+\
+#define LONG_SECTOR 20\
+\
+#define HIGH 3\
+#define NORMAL 2\
+\
+#define MSECS 30 * 1000\
+#define CYCLES MSECS / DELAY\
+\
+#define DEV_THRESH 0.8\
+\
+#define DELAY 1\
+\
+float fscale( float originalMin, float originalMax, float newBegin, float newEnd, float inputValue, float curve);\
+void insert(int val, int *avgs, int len);\
+int compute_average(int *avgs, int len);\
+void visualize_music();\
+\
+int curshow = strip.N_PIXELS;\
+\
+int mode = 0;\
+\
+int songmode = NORMAL;\
+\
+unsigned long song_avg;\
+\
+int iter = 0;\
+\
+float fade_scale = 1.2;\
+\
+CRGB leds[strip.N_PIXELS];\
+\
+int avgs[AVGLEN] = \{-1\};\
+\
+int long_avg[LONG_SECTOR] = \{-1\};\
+struct time_keeping \{\
+  unsigned long times_start;\
+  short times;\
+\};\
+\
+struct color \{\
+  int r;\
+  int g;\
+  int b;\
+\};\
+\
+struct time_keeping high;\
+struct color Color; \
+\
+void setup() \{\
+  Serial.begin(9600);\
+  //Set all lights to make sure all are working as expected\
+  FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, strip.N_PIXELS);\
+  for (int i = 0; i < strip.N_PIXELS; i++) \
+    leds[i] = CRGB(0, 0, 255);\
+  FastLED.show(); \
+  delay(1000);  \
+\
+  for (int i = 0; i < AVGLEN; i++) \{  \
+    insert(250, avgs, AVGLEN);\
+  \}\
+\
+  high.times = 0;\
+  high.times_start = millis();\
+  Color.r = 0;  \
+  Color.g = 0;\
+  Color.b = 1;\
+\}\
+\
+void loop() \{\
+  switch(mode) \{\
+    case 0:\
+      visualize_music();\
+      break;\
+    default:\
+      break;\
+  \}\
+    delay(DELAY);       \
+\}\
+\
+void check_high(int avg) \{\
+  if (avg > (song_avg/iter * 1.1))  \{\
+    if (high.times != 0) \{\
+      if (millis() - high.times_start > 200.0) \{\
+        high.times = 0;\
+        songmode = NORMAL;\
+      \} else \{\
+        high.times_start = millis();  \
+        high.times++; \
+      \}\
+    \} else \{\
+      high.times++;\
+      high.times_start = millis();\
+\
+    \}\
+  \}\
+  if (high.times > 30 && millis() - high.times_start < 50.0)\
+    songmode = HIGH;\
+  else if (millis() - high.times_start > 200) \{\
+    high.times = 0;\
+    songmode = NORMAL;\
+  \}\
+\}\
+\
+void visualize_music() \{\
+  int sensor_value, mapped, avg, longavg;\
+  \
+  sensor_value = analogRead(ANALOG_READ);\
+  \
+  if (sensor_value == 0)\
+    return;\
+  \
+\
+  /*Set the different leds. Control for too high and too low values.\
+          Fun thing to try: Dont account for overflow in one direction, \
+    some interesting light effects appear! */\
+  // Update Small LED array\
+  for (int i = 0; i < strip.N_PIXELS_HALF; i++) \
+    //The leds we want to show\
+    if (i < height) \{\
+      if (leds[strip.N_PIXELS_HALF-i-1].r + Color.r > 255) \{\
+        leds[strip.N_PIXELS_HALF-i-1].r = 255;\
+        leds[strip.N_PIXELS_HALF+i].r = 255;\
+      \}\
+      else if (leds[strip.N_PIXELS_HALF-i-1].r + Color.r < 0) \{\
+        leds[strip.N_PIXELS_HALF-i-1].r = 0;\
+        leds[strip.N_PIXELS_HALF+i].r = 0;\
+      \}\
+      else \{\
+        leds[strip.N_PIXELS_HALF-i-1].r = leds[strip.N_PIXELS_HALF-i-1].r + Color.r;\
+        leds[strip.N_PIXELS_HALF+i].r = leds[strip.N_PIXELS_HALF+i].r + Color.r;\
+      \}\
+          \
+      if (leds[strip.N_PIXELS_HALF-i-1].g + Color.g > 255) \{\
+        leds[strip.N_PIXELS_HALF-i-1].g = 255;\
+        leds[strip.N_PIXELS_HALF+i].g = 255;\
+      \}\
+      else if (leds[strip.N_PIXELS_HALF-i-1].g + Color.g < 0) \{\
+        leds[strip.N_PIXELS_HALF-i-1].g = 0;\
+        leds[strip.N_PIXELS_HALF+i].g = 0;\
+      \}\
+      else \{\
+        leds[strip.N_PIXELS_HALF-i-1].g = leds[strip.N_PIXELS_HALF-i-1].g + Color.g;\
+        leds[strip.N_PIXELS_HALF+i].g = leds[strip.N_PIXELS_HALF+i].g + Color.g;\
+      \}\
+\
+\
+      if (leds[strip.N_PIXELS_HALF-i-1].b + Color.b > 255) \{\
+        leds[strip.N_PIXELS_HALF-i-1].b = 255;\
+        leds[strip.N_PIXELS_HALF+i].b = 255;\
+      \}\
+      else if (strip.N_PIXELS_HALF-i-1].b + Color.b < 0) \{\
+        leds[strip.N_PIXELS_HALF-i-1].b = 0;\
+        leds[strip.N_PIXELS_HALF+i].b = 0;\
+      \}\
+      else \{\
+        leds[strip.N_PIXELS_HALF-i-1].b = leds[strip.N_PIXELS_HALF-i-1].b + Color.b;  \
+        leds[strip.N_PIXELS_HALF+i].b = leds[strip.N_PIXELS_HALF+i].b + Color.b;  \
+      \}\
+      \
+    //All the other LEDs begin their fading journey to eventual total darkness\
+    \} else \{\
+      leds[strip.N_PIXELS_HALF-i-1] = CRGB(leds[strip.N_PIXELS_HALF-i-1].r/fade_scale, leds[strip.N_PIXELS_HALF-i-1].g/fade_scale, leds[N_PIXELS_HALF-i-1].b/fade_scale);\
+      leds[strip.N_PIXELS_HALF+i] = CRGB(leds[strip.N_PIXELS_HALF+i].r/fade_scale, leds[strip.N_PIXELS_HALF+i].g/fade_scale, leds[N_PIXELS_HALF+i].b/fade_scale);\
+\
+    \}\
+\
+  //keep peak at top for small LED array\
+  if(height > peak)     peak   = height; // Keep 'peak' dot at top\
+  if(peak > 0 && peak < strip.N_PIXELS_HALF) \
+  \{\
+    leds[strip.N_PIXELS_HALF-peak] = CHSV(200, 200, 200);  // set peak dot\
+    leds[strip.N_PIXELS_HALF+peak-1] = CHSV(200, 200, 200);  // set peak dot\
+  \}\
+\
+  FastLED.show(); \
+\
+    // Every few frames, make the peak pixel drop by 1:\
+ \
+    if(++dotCount >= PEAK_FALL_split) \{ //fall rate \
+      \
+      if(peak > 0) peak--;\
+      dotCount = 0;\
+    \} \
+    if(++dotCount_2 >= PEAK_FALL_split_2) \{ //fall rate \
+      if(peak_2 > 0) peak_2--;\
+      dotCount_2 = 0;\
+    \} \
+  int compute_average(int *avgs, int len) \{\
+  int sum = 0;\
+  for (int i = 0; i < len; i++)\
+    sum += avgs[i];\
+\
+  return (int)(sum / len);\
+\
+\}\
+\
+void insert(int val, int *avgs, int len) \{\
+  for (int i = 0; i < len; i++) \{\
+    if (avgs[i] == -1) \{\
+      avgs[i] = val;\
+      return;\
+    \}  \
+  \}\
+\
+  for (int i = 1; i < len; i++) \{\
+    avgs[i - 1] = avgs[i];\
+  \}\
+  avgs[len - 1] = val;\
+\}\
+\
+float fscale( float originalMin, float originalMax, float newBegin, float\
+    newEnd, float inputValue, float curve)\{\
+\
+  float OriginalRange = 0;\
+  float NewRange = 0;\
+  float zeroRefCurVal = 0;\
+  float normalizedCurVal = 0;\
+  float rangedValue = 0;\
+  boolean invFlag = 0;\
+\
+\
+  if (curve > 10) curve = 10;\
+  if (curve < -10) curve = -10;\
+\
+  curve = (curve * -.1) ; // - invert and scale - this seems more intuitive - postive numbers give more weight to high end on output \
+  curve = pow(10, curve); // convert linear scale into lograthimic exponent for other pow function\
+\
+  if (inputValue < originalMin) \{\
+    inputValue = originalMin;\
+  \}\
+  if (inputValue > originalMax) \{\
+    inputValue = originalMax;\
+  \}\
+\
+  OriginalRange = originalMax - originalMin;\
+\
+  if (newEnd > newBegin)\{ \
+    NewRange = newEnd - newBegin;\
+  \}\
+  else\
+  \{\
+    NewRange = newBegin - newEnd; \
+    invFlag = 1;\
+  \}\
+\
+  zeroRefCurVal = inputValue - originalMin;\
+  normalizedCurVal  =  zeroRefCurVal / OriginalRange;   // normalize to 0 - 1 float\
+\
+  if (originalMin > originalMax ) \{\
+    return 0;\
+  \}\
+\
+  if (invFlag == 0)\{\
+    rangedValue =  (pow(normalizedCurVal, curve) * NewRange) + newBegin;\
+\
+  \}\
+  else     // invert the ranges\
+  \{   \
+    rangedValue =  newBegin - (pow(normalizedCurVal, curve) * NewRange); \
+  \}\
+\
+  return rangedValue;\
+\}\
+  \
+\}}
